@@ -1,159 +1,228 @@
 """
-Train YOLO Model for Speed Sign Detection
-==========================================
-This script trains a YOLOv8 model and saves it to the weights/ folder
-where your project expects it.
 
-BEFORE RUNNING:
-1. Download your dataset from Roboflow in "YOLOv8" format
-2. Extract the zip file
-3. Update DATA_PATH below to point to your data.yaml
-
-AFTER RUNNING:
-- Your trained model will be at: weights/best.pt
-- Your project (main.py) will automatically use it
+Modes:
+  - DEBUG:  5 epochs, 10% data    → ~5-10 minutes
+  - QUICK:  20 epochs, 50% data   → ~1-2 hours
+  - FULL:   100 epochs, 100% data → ~18-20 hours
 """
 
 import os
 import shutil
-from pathlib import Path
-
 import torch
-
-# Check if MPS (M1 GPU) is available
-if torch.backends.mps.is_available():
-    DEVICE = "mps"  # Use M1 GPU!
-    print("✅ Apple M1 GPU (MPS) detected! Using GPU acceleration.")
-elif torch.cuda.is_available():
-    DEVICE = 0  # Use NVIDIA GPU
-    print("✅ NVIDIA GPU detected!")
-else:
-    DEVICE = "cpu"
-    print("⚠️  No GPU detected, using CPU (slow)")
+from pathlib import Path
 
 
 
 DATA_PATH = "/Users/alexanderabdu/Documents/Honours-Stage-Project-/dataset/data.yaml"
 
-# Training settings
-EPOCHS = 100  # More epochs = better accuracy, but takes longer
-MODEL_SIZE = "yolov8n.pt"  # n=nano (fast), s=small, m=medium (accurate)
-BATCH_SIZE = 16  # Reduce to 8 or 4 if you get memory errors
-IMAGE_SIZE = 640  # Standard size, don't change unless needed
+
+
+MODE = "DEBUG"  # Options: "DEBUG", "QUICK", "FULL"
+
+# Mode configurations
+MODES = {
+    "DEBUG": {
+        "epochs": 5,
+        "fraction": 0.1,      # Use only 10% of data
+        "batch_size": 8,
+        "imgsz": 320,         # Smaller images = faster
+        "patience": 3,
+        "description": "Quick test (~5-10 mins)"
+    },
+    "QUICK": {
+        "epochs": 20,
+        "fraction": 0.5,      # Use 50% of data
+        "batch_size": 16,
+        "imgsz": 480,
+        "patience": 10,
+        "description": "Medium training (~1-2 hours)"
+    },
+    "FULL": {
+        "epochs": 100,
+        "fraction": 1.0,      # Use all data
+        "batch_size": 16,
+        "imgsz": 640,
+        "patience": 50,
+        "description": "Full training (~18-20 hours)"
+    }
+}
+
+MODEL_SIZE = "yolov8n.pt"  # nano = fastest
 
 
 
-# ============================================================
-# TRAINING CODE - DON'T EDIT
-# ============================================================
+if torch.backends.mps.is_available():
+    DEVICE = "mps"
+    device_name = "Apple M1 GPU"
+elif torch.cuda.is_available():
+    DEVICE = 0
+    device_name = "NVIDIA GPU"
+else:
+    DEVICE = "cpu"
+    device_name = "CPU (slow!)"
 
-def train():
-    """Train the YOLO model."""
+
+def main():
+    # Get mode settings
+    if MODE not in MODES:
+        print(f" Invalid mode: {MODE}")
+        print(f" Choose from: {list(MODES.keys())}")
+        return
+
+    settings = MODES[MODE]
+
+    # Validate data path
+    if not os.path.exists(DATA_PATH):
+        print(f"\n File not found: {DATA_PATH}\n")
+        return
+
     from ultralytics import YOLO
 
+    # Print configuration
 
     print("YOLO SPEED SIGN TRAINING")
 
-    print(f"\nSettings:")
-    print(f"  Dataset:     {DATA_PATH}")
-    print(f"  Model:       {MODEL_SIZE}")
-    print(f"  Epochs:      {EPOCHS}")
-    print(f"  Batch size:  {BATCH_SIZE}")
-    print(f"  Image size:  {IMAGE_SIZE}")
-    print("\nThis may take a while... (30 mins - 2 hours depending on hardware)")
-    print("=" * 60 + "\n")
+    print(f"""
+    Mode:        {MODE} - {settings['description']}
+    
+    Settings:
+      Dataset:   {DATA_PATH}
+      Model:     {MODEL_SIZE}
+      Device:    {DEVICE} ({device_name})
+      
+    Training:
+      Epochs:    {settings['epochs']}
+      Data:      {int(settings['fraction'] * 100)}% of dataset
+      Batch:     {settings['batch_size']}
+      Image sz:  {settings['imgsz']}
+      Patience:  {settings['patience']}
+    """)
 
-    # Load pretrained model
+
+
+    # Load model
     model = YOLO(MODEL_SIZE)
 
     # Train
     results = model.train(
         data=DATA_PATH,
-        epochs=EPOCHS,
+        epochs=settings['epochs'],
+        batch=settings['batch_size'],
+        imgsz=settings['imgsz'],
+        patience=settings['patience'],
+        fraction=settings['fraction'],  # KEY: Use subset of data!
         device=DEVICE,
-        batch=BATCH_SIZE,
-        imgsz=IMAGE_SIZE,
-        patience=50,  # Stop early if no improvement for 50 epochs
 
-        # Augmentation (important for traffic signs!)
-        flipud=0.0,  # DON'T flip upside down
-        fliplr=0.0,  # DON'T flip left-right (numbers would reverse)
-        degrees=10.0,  # Slight rotation
-        translate=0.1,  # Slight position shift
-        scale=0.5,  # Zoom in/out
-        hsv_h=0.015,  # Color variation
-        hsv_s=0.7,  # Saturation variation
-        hsv_v=0.4,  # Brightness variation
+        # Augmentation (good for traffic signs)
+        flipud=0.0,         # Don't flip upside down
+        fliplr=0.0,         # Don't flip horizontally
+        degrees=10.0,
+        translate=0.1,
+        scale=0.5,
+        hsv_h=0.015,
+        hsv_s=0.7,
+        hsv_v=0.4,
 
-        # Output location
+        # Output
         project="runs/train",
-        name="speed_signs",
+        name=f"speed_signs_{MODE.lower()}",
 
-        # Save settings
+        # Saving
         save=True,
         plots=True,
-        verbose=True
+        verbose=True,
+
+        # Speed optimizations for debug
+        workers=0 if MODE == "DEBUG" else 4,
+        cache=True if MODE == "DEBUG" else False,  # Cache images in RAM for debug
     )
+
+    # Copy model to weights folder
+    copy_best_model(MODE)
+
+    # Print results
+    print_results(MODE, results)
 
     return results
 
 
-def copy_model_to_weights():
-    """Copy the trained model to the weights/ folder."""
+def copy_best_model(mode):
+    """Copy the best model to the weights folder."""
+    train_dir = Path("runs/train")
 
-    # Source: where YOLO saves the model
-    source = Path("runs/best.pt")
+    if not train_dir.exists():
+        return
 
-    # Destination: where your project expects it
-    dest_folder = Path("runs/weights")
-    dest = dest_folder / "best.pt"
+    # Find the latest training run for this mode
+    pattern = f"speed_signs_{mode.lower()}"
+    runs = sorted([d for d in train_dir.iterdir()
+                   if d.is_dir() and d.name.startswith(pattern)])
 
-    # Create weights folder if it doesn't exist
-    dest_folder.mkdir(exist_ok=True)
+    if not runs:
+        return
+
+    source = runs[-1] / "weights" / "best.pt"
+
+    if mode == "DEBUG":
+        dest = Path("weights/debug_model.pt")
+    else:
+        dest = Path("weights/best.pt")
+
+    Path("weights").mkdir(exist_ok=True)
 
     if source.exists():
         shutil.copy(source, dest)
-        print(f"\n✅ Model copied to: {dest}")
-        return True
+        print(f"\n✅ Model saved to: {dest}")
+
+
+
+
+
+
+
+def test_model(model_path="weights/best.pt", image_path=None):
+    """
+    Quick test of a trained model.
+
+    Usage:
+        from train_debug import test_model
+        test_model("weights/debug_model.pt", "test_image.jpg")
+    """
+    from ultralytics import YOLO
+    import cv2
+
+    if not os.path.exists(model_path):
+        print(f"Model not found: {model_path}")
+        return
+
+    model = YOLO(model_path)
+
+    if image_path and os.path.exists(image_path):
+        # Test on specific image
+        results = model.predict(image_path, save=True, conf=0.5)
+        print(f"Results saved to: runs/detect/predict/")
     else:
-        print(f"\n❌ Could not find trained model at: {source}")
-        return False
+        # Test on webcam
+        print("Testing on webcam... Press 'q' to quit")
+        cap = cv2.VideoCapture(0)
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            results = model.predict(frame, conf=0.5, verbose=False)
+            annotated = results[0].plot()
+
+            cv2.imshow("Test", annotated)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
 
 
-def show_results():
 
-
-    print("TRAINING COMPLETE!")
-
-    print(f"""
-Your trained model is ready!
-
-Files created:
-  📁 weights/best.pt          <- Your project uses this
-  📁 runs/train/speed_signs/  <- Training logs and graphs
-
-To run your project:
-  python main.py --show --mock_gps
-
-To see training graphs:
-  Open: runs/train/speed_signs/results.png
-""")
-    print("=" * 60)
-
-
-# ============================================================
-# MAIN
-# ============================================================
 
 if __name__ == "__main__":
-    # Step 1: Validate settings
-
-
-    # Step 2: Train
-    results = train()
-
-    # Step 3: Copy model to weights folder
-    copy_model_to_weights()
-
-    # Step 4: Show results
-    show_results()
+    main()
