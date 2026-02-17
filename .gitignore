@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.idea/
+
+# YOLO training outputs & weights
+runs/
+src/runs/
+src/weights/
+src/yolov8n.pt
+*.pt
+
+# Dataset
+dataset/
+hardware/
