@@ -17,7 +17,7 @@ DATA_PATH = "/Users/alexanderabdu/Documents/Honours-Stage-Project-/dataset/data.
 
 
 
-MODE = "DEBUG"  # Options: "DEBUG", "QUICK", "FULL"
+MODE = "QUICK"  # Options: "DEBUG", "QUICK", "FULL"
 
 # Mode configurations
 MODES = {
@@ -110,12 +110,12 @@ def main():
         batch=settings['batch_size'],
         imgsz=settings['imgsz'],
         patience=settings['patience'],
-        fraction=settings['fraction'],  # KEY: Use subset of data!
+        fraction=settings['fraction'],  # Use subset of data
         device=DEVICE,
 
-        # Augmentation (good for traffic signs)
-        flipud=0.0,         # Don't flip upside down
-        fliplr=0.0,         # Don't flip horizontally
+        # Augmentation
+        flipud=0.0,
+        fliplr=0.0,
         degrees=10.0,
         translate=0.1,
         scale=0.5,
@@ -140,8 +140,7 @@ def main():
     # Copy model to weights folder
     copy_best_model(MODE)
 
-    # Print results
-    print_results(MODE, results)
+
 
     return results
 
