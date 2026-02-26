@@ -1,6 +1,0 @@
-ultralytics>=8.2.0
-opencv-python
-numpy
-requests
-pyserial
-pynmea2

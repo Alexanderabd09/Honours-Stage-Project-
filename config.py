@@ -8,7 +8,7 @@ class Config:
     frame_height: int = 480
 
     # YOLO
-    yolo_model_path: str = "/Users/alexanderabdu/Documents/Honours-Stage-Project-/src/weights/debug_model.pt"
+    yolo_model_path: str = "weights/best.pt"
     conf_threshold: float = 0.60
     iou_threshold: float = 0.45
     min_box_area: int = 24 * 24  # ignore tiny boxes

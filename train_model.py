@@ -17,9 +17,9 @@ DATA_PATH = "/Users/alexanderabdu/Documents/Honours-Stage-Project-/dataset/data.
 
 
 
-MODE = "QUICK"  # Options: "DEBUG", "QUICK", "FULL"
+MODE = "FULL"  # Options: "DEBUG", "QUICK", "FULL"
 
-# Mode configurations
+# Mode configurations 
 MODES = {
     "DEBUG": {
         "epochs": 5,
