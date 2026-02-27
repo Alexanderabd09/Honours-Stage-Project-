@@ -1,60 +1,4 @@
-"""
-main_webots.py — Webots-Integrated Speed Sign Detection
-=========================================================
-Replaces main_hybrid.py when running with Webots simulation.
 
-What changed vs main_hybrid.py:
-  - Vehicle speed comes from Webots (real physics) via TCP socket,
-    NOT from keyboard W/S.
-  - Map speed limit is still adjustable via keyboard (M key).
-  - Keyboard speed override is still available for testing (T key).
-  - Buzzer alert plays an audible beep on temporary sign detection.
-  - detector.py, decision.py, config.py are COMPLETELY UNCHANGED.
-
-Architecture:
-    ┌─────────────────────────────────┐
-    │           WEBOTS                │
-    │  ┌──────────────────────────┐   │
-    │  │  Road World + Model Car  │   │
-    │  │  (real physics speed)    │   │
-    │  └────────────┬─────────────┘   │
-    └───────────────│─────────────────┘
-                    │ TCP :65432 (JSON speed packets)
-                    ▼
-    ┌───────────────────────────────────────┐
-    │           main_webots.py              │
-    │                                       │
-    │  WebotsBridge ──► VehicleState        │
-    │       (speed from Webots)             │
-    │                                       │
-    │  Webcam ──► YoloSpeedDetector         │
-    │       (real printed signs)   ──────►  │
-    │                               DecisionEngine
-    │                                       │
-    │                               is_temporary?
-    │                                       │
-    │                               ┌───────┴──────┐
-    │                            YES│              │NO
-    │                               ▼              ▼
-    │                          BUZZER!         Log only
-    └───────────────────────────────────────────────┘
-
-Usage:
-    # Start Webots first, then run:
-    python main_webots.py
-
-    # External camera:
-    python main_webots.py --camera 1
-
-    # If Webots not running yet, use fallback speed:
-    python main_webots.py --fallback_speed 30
-
-Controls (in OpenCV window):
-    M       : Cycle map speed limit (20/30/40/50/60/70 mph)
-    T       : Toggle manual speed override (for testing without Webots)
-    W / S   : Adjust override speed (only when override active)
-    Q       : Quit
-"""
 
 import argparse
 import time
@@ -68,23 +12,19 @@ import csv
 from datetime import datetime
 from typing import Optional
 
-# ── Import your UNCHANGED modules ──────────────────────────
+
 sys.path.insert(0, os.path.dirname(__file__))
 from detector import YoloSpeedDetector
 from decision import DecisionEngine
 from config import Config
 
 
-# ============================================================
-# WEBOTS BRIDGE — replaces SimulatedVehicle keyboard control
-# ============================================================
+
+# WEBOTS BRIDGE 
+
 
 class WebotsVehicleState:
-    """
-    Holds the latest vehicle state received from the Webots controller.
-    Thread-safe: updated by the socket listener thread,
-    read by the main detection loop.
-    """
+   
     def __init__(self, fallback_speed_mph: float = 30.0):
         self.speed_mps: float = fallback_speed_mph / 2.237
         self.speed_mph: float = fallback_speed_mph
@@ -119,10 +59,7 @@ class WebotsVehicleState:
 
 
 class WebotsBridge:
-    """
-    Background thread that connects to the Webots controller socket
-    and continuously reads speed packets.
-    """
+  
     def __init__(self, vehicle: WebotsVehicleState,
                  host: str = "127.0.0.1", port: int = 65432,
                  retry_interval: float = 2.0):
@@ -142,7 +79,7 @@ class WebotsBridge:
                 sock.settimeout(5.0)
                 sock.connect((self.host, self.port))
                 sock.settimeout(2.0)
-                print("[Bridge] ✓ Connected to Webots controller!")
+                print("[Bridge]  Connected to Webots controller!")
 
                 buf = ""
                 while self._running:
@@ -174,16 +111,15 @@ class WebotsBridge:
         self._running = False
 
 
-# ============================================================
+
 # BUZZER — replaces GPIO buzzer; works on laptop
-# ============================================================
+
 
 class Buzzer:
     """
     Software buzzer.
     - Tries to play a system beep / sound file.
-    - Works cross-platform (Linux, macOS, Windows).
-    - Designed to signal TEMPORARY sign detection (your brief).
+    - Designed to signal TEMPORARY sign detection 
     """
 
     def __init__(self, cooldown_seconds: float = 5.0):
@@ -228,9 +164,9 @@ class Buzzer:
             print("\a", end="", flush=True)
 
 
-# ============================================================
+
 # ALERT MANAGER (carries over from main_hybrid.py)
-# ============================================================
+
 
 class AlertManager:
     """
@@ -274,7 +210,7 @@ class AlertManager:
         print(message)
         print(f"{'='*60}{reset}\n")
 
-        # ── BUZZER for temporary sign ──────────────────────────
+        #  BUZZER for temporary sign
         if alert_type == "TEMPORARY":
             self.buzzer.buzz(f"Temporary limit detected!\n  {message}")
 
@@ -285,9 +221,9 @@ class AlertManager:
         })
 
 
-# ============================================================
-# DATA LOGGER (unchanged from main_hybrid.py)
-# ============================================================
+
+# DATA LOGGER 
+
 
 class DataLogger:
     def __init__(self, filename: str = "detection_log_webots.csv"):
@@ -324,15 +260,12 @@ class DataLogger:
               f"({len(self.data)} frames)")
 
 
-# ============================================================
+
 # MAIN WEBOTS DETECTION SYSTEM
-# ============================================================
+
 
 class WebotsDetectionSystem:
-    """
-    Webots-integrated version of HybridDetectionSystem.
-    Same pipeline; vehicle speed now comes from Webots physics.
-    """
+    
 
     def __init__(self, camera_index: int = 0,
                  show_video: bool = True,
@@ -359,7 +292,7 @@ class WebotsDetectionSystem:
         h = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
         print(f"   Camera ready: {w}x{h}")
 
-        # [2] YOLO detector (UNCHANGED)
+        # [2] YOLO detector 
         print(f"\n[2/6] Loading YOLO: {self.config.yolo_model_path}")
         self.detector = YoloSpeedDetector(
             model_path    = self.config.yolo_model_path,
@@ -370,7 +303,7 @@ class WebotsDetectionSystem:
         )
         print("   YOLO ready")
 
-        # [3] Decision engine (UNCHANGED)
+        # [3] Decision engine 
         print("\n[3/6] Decision engine...")
         self.decision = DecisionEngine(
             confirm_frames         = self.config.confirm_frames,
@@ -416,7 +349,7 @@ class WebotsDetectionSystem:
         print("=" * 60)
         self._print_controls()
 
-    # ----------------------------------------------------------
+    
     def _logger(self):
         class L:
             def info(s, m):    print(f"[INFO]  {m}")
@@ -433,9 +366,9 @@ class WebotsDetectionSystem:
         print("  1–9     → set override to 10–90 mph")
         print("  Q       → quit\n")
 
-    # ----------------------------------------------------------
-    # MAIN FRAME PIPELINE (same as main_hybrid.py)
-    # ----------------------------------------------------------
+   
+    # MAIN FRAME PIPELINE 
+   
     def process_frame(self, frame):
         snap = self.vehicle.get_snapshot()
 
@@ -453,7 +386,7 @@ class WebotsDetectionSystem:
         top_speed  = top["speed"] if top else None
         top_conf   = top["conf"]  if top else 0.0
 
-        # 2. Decision engine (UNCHANGED logic)
+        # 2. Decision engine 
         event = self.decision.update(top_speed, speed_mps, map_mph)
 
         confirmed    = None
@@ -494,7 +427,7 @@ class WebotsDetectionSystem:
 
         return frame, top_speed, confirmed, top_conf, is_overspeed, is_temporary
 
-    # ----------------------------------------------------------
+   
     def _draw_overlay(self, frame, detection, snap,
                       confirmed, is_overspeed, is_temporary):
 
@@ -565,9 +498,9 @@ class WebotsDetectionSystem:
 
         return frame
 
-    # ----------------------------------------------------------
+   
     # KEYBOARD HANDLING (OpenCV)
-    # ----------------------------------------------------------
+   
     def _handle_key(self, key: int) -> bool:
         """Returns False when quit requested."""
         if key == ord('q'):
@@ -599,9 +532,9 @@ class WebotsDetectionSystem:
                 print(f"[Key] Override speed → {self.manual_override_speed} mph")
         return True
 
-    # ----------------------------------------------------------
+   
     # MAIN LOOP
-    # ----------------------------------------------------------
+   
     def run(self):
         print("\nStarting detection loop…")
         print("Hold printed speed signs in front of the webcam!\n")
@@ -662,9 +595,9 @@ class WebotsDetectionSystem:
         print("=" * 60)
 
 
-# ============================================================
+
 # ENTRY POINT
-# ============================================================
+
 
 def parse_args():
     p = argparse.ArgumentParser(

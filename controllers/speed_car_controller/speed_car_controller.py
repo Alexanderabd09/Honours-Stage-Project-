@@ -1,24 +1,4 @@
-"""
-Speed Car Controller - Webots (Autonomous + Socket Broadcast)
-=============================================================
-Full port of the original C autonomous_vehicle controller to Python,
-with the TCP socket broadcast added so main_webots.py receives the
-car's real physics speed for the decision engine.
 
-Autonomous behaviour (from original C controller):
-  - Camera-based yellow line following using PID
-  - SICK LiDAR obstacle avoidance
-  - GPS speed readout via wb_gps_get_speed()
-  - Keyboard manual override (arrow keys in Webots window)
-
-Added for project BA-25-1057:
-  - TCP socket on :65432 streaming speed_mps, speed_mph, pos_x, pos_z
-  - main_webots.py connects to this and feeds speed into DecisionEngine
-
-Project: BA-25-1057 Speed Limit Sign Detection
-Student: Ojonibe Alexander Abdu
-University of Hull
-"""
 
 import socket
 import json
@@ -28,38 +8,37 @@ import math
 
 from vehicle import Driver
 
-# ================================================================
+
 # TUNEABLE PARAMETERS
-# ================================================================
 
 HOST = "127.0.0.1"
 PORT = 65432
 
-# Initial cruising speed in km/h — C original starts at 50 km/h (~31 mph)
+# Initial cruising speed in km/h (~31 mph)
 INITIAL_SPEED_KPH = 50.0
 
-# PID gains — identical to C original
+# PID gains 
 KP = 0.25
 KI = 0.006
 KD = 2.0
 
-# Yellow line filter window size — identical to C original
+# Yellow line filter window size
 FILTER_SIZE = 3
 
-# SICK central detection half-area — identical to C original
+# SICK central detection half-area
 SICK_HALF_AREA = 20
 
-# Reference colour for yellow road line in BGR — identical to C original
+# Reference colour for yellow road line in BGR 
 YELLOW_REF_B = 95
 YELLOW_REF_G = 187
 YELLOW_REF_R = 203
 YELLOW_TOLERANCE = 30
 
-UNKNOWN = 99999.99   # sentinel, identical to C #define UNKNOWN
+UNKNOWN = 99999.99   # sentinel, 
 
-# ================================================================
-# PID CONTROLLER  (port of C applyPID)
-# ================================================================
+
+# PID CONTROLLER  ( applyPID)
+
 
 class LaneFollowPID:
     def __init__(self):
@@ -89,9 +68,9 @@ class LaneFollowPID:
         return KP * angle + KI * self.integral + KD * diff
 
 
-# ================================================================
-# ANGLE FILTER  (port of C filter_angle)
-# ================================================================
+
+# ANGLE FILTER  
+
 
 class AngleFilter:
     def __init__(self):
@@ -111,9 +90,9 @@ class AngleFilter:
         return sum(self.values) / FILTER_SIZE
 
 
-# ================================================================
+
 # MAIN CONTROLLER
-# ================================================================
+
 
 class SpeedCarController:
 
@@ -121,7 +100,7 @@ class SpeedCarController:
         self.driver    = Driver()
         self.timestep  = int(self.driver.getBasicTimeStep())
 
-        # ── Discover devices (mirrors C device loop) ──────────
+        #  Discover devices 
         self.has_camera  = False
         self.has_gps     = False
         self.has_sick    = False
@@ -138,7 +117,7 @@ class SpeedCarController:
               f"gps:{self.has_gps}  sick:{self.has_sick}  "
               f"display:{self.has_display}")
 
-        # ── Camera ────────────────────────────────────────────
+        #Camera
         self.camera  = None
         self.cam_w   = 0
         self.cam_h   = 0
@@ -152,7 +131,7 @@ class SpeedCarController:
             print(f"[Controller] Camera {self.cam_w}x{self.cam_h} "
                   f"fov={self.cam_fov:.2f}")
 
-        # ── SICK LiDAR ────────────────────────────────────────
+        #SICK LiDAR
         self.sick      = None
         self.sick_w    = 0
         self.sick_fov  = 0.0
@@ -163,7 +142,7 @@ class SpeedCarController:
             self.sick_fov = self.sick.getFov()
             print(f"[Controller] SICK {self.sick_w}px fov={self.sick_fov:.2f}")
 
-        # ── GPS ───────────────────────────────────────────────
+        #GPS
         self.gps           = None
         self.gps_coords    = [0.0, 0.0, 0.0]
         self.gps_speed_kph = 0.0
@@ -172,20 +151,20 @@ class SpeedCarController:
             self.gps.enable(self.timestep)
             print("[Controller] GPS enabled")
 
-        # ── Keyboard ──────────────────────────────────────────
+        #  Keyboard 
         self.keyboard = self.driver.getKeyboard()
         self.keyboard.enable(self.timestep)
 
-        # ── Driving state ─────────────────────────────────────
+        # Driving state 
         self.autodrive      = self.has_camera
         self.speed_kph      = 0.0
         self.steering_angle = 0.0
-        self.manual_steer   = 0   # integer steps, like C original
+        self.manual_steer   = 0   # integer steps, 
 
         self.pid    = LaneFollowPID()
         self.filter = AngleFilter()
 
-        # ── Start car ─────────────────────────────────────────
+        # Start car
         if self.has_camera:
             self._set_speed(INITIAL_SPEED_KPH)
 
@@ -194,7 +173,7 @@ class SpeedCarController:
         self.driver.setAntifogLights(True)
         self.driver.setWiperMode(Driver.SLOW)
 
-        # ── Socket server ─────────────────────────────────────
+        # Socket server 
         self.clients      = []
         self.clients_lock = threading.Lock()
         self._start_socket_server()
@@ -206,9 +185,9 @@ class SpeedCarController:
         else:
             print("[Controller] Manual mode (no camera found)")
 
-    # ────────────────────────────────────────────────────────────
-    # SPEED & STEERING  (port of C set_speed / set_steering_angle)
-    # ────────────────────────────────────────────────────────────
+   
+    # SPEED & STEERING  (set_speed / set_steering_angle)
+    
 
     def _set_speed(self, kph: float):
         kph = min(kph, 250.0)
@@ -217,16 +196,16 @@ class SpeedCarController:
         print(f"[Controller] Speed → {kph:.0f} km/h ({kph/1.609:.0f} mph)")
 
     def _set_steering_angle(self, angle: float):
-        # Rate-limit: max 0.1 rad change per step (identical to C)
+        # Rate-limit: max 0.1 rad change per step 
         delta = angle - self.steering_angle
         if delta >  0.1: angle = self.steering_angle + 0.1
         if delta < -0.1: angle = self.steering_angle - 0.1
         self.steering_angle = angle
         self.driver.setSteeringAngle(max(-0.5, min(0.5, angle)))
 
-    # ────────────────────────────────────────────────────────────
-    # KEYBOARD  (port of C check_keyboard)
-    # ────────────────────────────────────────────────────────────
+    
+    # KEYBOARD  ( check_keyboard)
+  
 
     def _handle_keyboard(self):
         key = self.keyboard.getKey()
@@ -254,9 +233,9 @@ class SpeedCarController:
             self.manual_steer = new_steer
             self._set_steering_angle(self.manual_steer * 0.02)
 
-    # ────────────────────────────────────────────────────────────
-    # CAMERA — yellow line angle  (port of C process_camera_image)
-    # ────────────────────────────────────────────────────────────
+    
+    # CAMERA — yellow line angle  (process_camera_image)
+   
 
     def _process_camera(self) -> float:
         image = self.camera.getImage()
@@ -283,9 +262,9 @@ class SpeedCarController:
 
         return ((sumx / count / self.cam_w) - 0.5) * self.cam_fov
 
-    # ────────────────────────────────────────────────────────────
-    # SICK — obstacle angle & distance  (port of C process_sick_data)
-    # ────────────────────────────────────────────────────────────
+   
+    # SICK — obstacle angle & distance 
+   
 
     def _process_sick(self):
         data = self.sick.getRangeImage()
@@ -311,23 +290,23 @@ class SpeedCarController:
         angle = ((sumx / count / self.sick_w) - 0.5) * self.sick_fov
         return angle, dist
 
-    # ────────────────────────────────────────────────────────────
-    # GPS  (port of C compute_gps_speed)
-    # ────────────────────────────────────────────────────────────
+   
+    # GPS  ( compute_gps_speed)
+   
 
     def _update_gps(self):
         self.gps_coords    = list(self.gps.getValues())
         self.gps_speed_kph = self.gps.getSpeed() * 3.6   # m/s → km/h
 
-    # ────────────────────────────────────────────────────────────
-    # AUTO-DRIVE DECISION  (port of C main loop obstacle/line logic)
-    # ────────────────────────────────────────────────────────────
+   
+    # AUTO-DRIVE DECISION  ( main loop obstacle/line logic)
+   
 
     def _run_autodrive(self, yellow_angle: float,
                        obs_angle: float, obs_dist: float):
 
         if self.has_sick and obs_angle != UNKNOWN:
-            # ── Obstacle present — compute avoidance steer ──
+            # Obstacle present, compute avoidance steer 
             self.driver.setBrakeIntensity(0.0)
             avoid_steer = self.steering_angle
 
@@ -339,7 +318,7 @@ class SpeedCarController:
             steer = avoid_steer
             if yellow_angle != UNKNOWN:
                 line_steer = self.pid.update(yellow_angle)
-                # Take the more extreme steer (most cautious), same as C
+                # Take the more extreme steer (most cautious)
                 if avoid_steer > 0 and line_steer > 0:
                     steer = max(avoid_steer, line_steer)
                 elif avoid_steer < 0 and line_steer < 0:
@@ -350,18 +329,18 @@ class SpeedCarController:
             self._set_steering_angle(steer)
 
         elif yellow_angle != UNKNOWN:
-            # ── No obstacle — follow yellow line ──
+            #  No obstacle? follow yellow line 
             self.driver.setBrakeIntensity(0.0)
             self._set_steering_angle(self.pid.update(yellow_angle))
 
         else:
-            # ── Lost line — brake and wait ──
+            #  Lost line? brake and wait 
             self.driver.setBrakeIntensity(0.4)
             self.pid.reset()
 
-    # ────────────────────────────────────────────────────────────
+   
     # TCP SOCKET SERVER
-    # ────────────────────────────────────────────────────────────
+   
 
     def _start_socket_server(self):
         def serve():
@@ -409,12 +388,12 @@ class SpeedCarController:
             for d in dead:
                 self.clients.remove(d)
 
-    # ────────────────────────────────────────────────────────────
+   
     # MAIN LOOP
-    # ────────────────────────────────────────────────────────────
+   
 
     def run(self):
-        # Run sensors every 50 ms, matching C original's TIME_STEP=50
+        # Run sensors every 50 ms
         SENSOR_EVERY_N    = max(1, int(50 / self.timestep))
         BROADCAST_INTERVAL = 0.1   # 10 Hz
         broadcast_timer   = 0.0
@@ -453,6 +432,6 @@ class SpeedCarController:
             step_count += 1
 
 
-# ── Entry point ──────────────────────────────────────────────────
+#  Entry point 
 controller = SpeedCarController()
 controller.run()

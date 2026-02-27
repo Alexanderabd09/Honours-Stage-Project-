@@ -46,7 +46,7 @@
 │  (real printed signs)     │         │
 │                           ▼         │
 │                    DecisionEngine   │
-│                    (UNCHANGED)      │
+│                           │         │
 │                           │         │
 │            ┌──────────────┤         │
 │         is_temporary?  is_overspeed?│
@@ -107,7 +107,7 @@ If Webots is not running, `main_webots.py` falls back to the `--fallback_speed` 
 
 The buzzer fires when `DecisionEngine` returns `is_temporary = True`.
 
-This happens when (from your unchanged `decision.py`):
+This happens when ( `decision.py`):
 ```
 detected_sign_mph  <=  map_speed_mph - temporary_gap_mph
 ```
@@ -174,16 +174,16 @@ Option B — Press W/S in the Webots 3D window while it's running
 ```
 webots_speed_detection/
 │
-├── main_webots.py                    ← NEW: main entry point
+├── main_webots.py                    ←  main entry point
 │
 ├── controllers/
 │   └── speed_car_controller/
-│       └── speed_car_controller.py  ← NEW: Webots car controller
+│       └── speed_car_controller.py  ←  Webots car controller
 │
 ├── worlds/
-│   └── speed_detection_world.wbt    ← NEW: Webots world file
+│   └── speed_detection_world.wbt    ← Webots world file
 │
-│   ── UNCHANGED from hybrid system ──
+│   ── hybrid system ──
 ├── detector.py
 ├── decision.py
 ├── config.py
