@@ -1,5 +1,3 @@
-
-
 import argparse
 import time
 import socket
@@ -17,6 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from detector import YoloSpeedDetector
 from decision import DecisionEngine
 from config import Config
+from map_osm import OSMMapClient          # ← NEW: real OSM map lookups
 
 
 
@@ -316,20 +315,28 @@ class WebotsDetectionSystem:
         print("   Decision engine ready")
 
         # [4] Webots bridge
-        print(f"\n[4/6] Webots bridge → {webots_host}:{webots_port}")
+        print(f"\n[4/7] Webots bridge → {webots_host}:{webots_port}")
         self.vehicle = WebotsVehicleState(fallback_speed_mph)
         self.bridge  = WebotsBridge(self.vehicle, webots_host, webots_port)
         print("   Bridge thread started (will connect when Webots runs)")
 
-        # [5] Buzzer
-        print("\n[5/6] Buzzer...")
+        # [5] OSM map client  ← NEW
+        print("\n[5/7] OSM map client...")
+        self.osm = OSMMapClient(
+            query_radius_m    = self.config.map_query_radius_m,
+            cache_ttl_seconds = self.config.map_cache_seconds,
+        )
+        print("   OSM client ready (queries real UK road data via Overpass API)")
+
+        # [6] Buzzer
+        print("\n[6/7] Buzzer...")
         self.buzzer  = Buzzer(cooldown_seconds=self.config.alert_cooldown_seconds)
         self.alerter = AlertManager(self.buzzer,
                                     self.config.alert_cooldown_seconds)
         print("   Buzzer ready")
 
-        # [6] Logger
-        print("\n[6/6] Data logger...")
+        # [7] Logger
+        print("\n[7/7] Data logger...")
         self.data_logger = DataLogger()
         print("   Logger ready")
 
@@ -346,6 +353,7 @@ class WebotsDetectionSystem:
         print("SYSTEM READY")
         print("Waiting for Webots to start… (running with fallback speed"
               f" {fallback_speed_mph} mph until connected)")
+        print("Map speed: live OSM data via Overpass API (M key = manual fallback)")
         print("=" * 60)
         self._print_controls()
 
@@ -360,7 +368,7 @@ class WebotsDetectionSystem:
 
     def _print_controls(self):
         print("\nControls (click the OpenCV window first):")
-        print("  M       → cycle map speed limit")
+        print("  M       → cycle map speed limit (manual override, OSM takes priority)")
         print("  T       → toggle manual speed override (for testing)")
         print("  W / S   → +5 / -5 mph override speed")
         print("  1–9     → set override to 10–90 mph")
@@ -378,7 +386,13 @@ class WebotsDetectionSystem:
             map_mph   = snap["map_speed_mph"]
         else:
             speed_mps = snap["speed_mps"]
-            map_mph   = snap["map_speed_mph"]
+            # ← NEW: query real OSM road data using Webots position
+            osm_limit = self.osm.get_speed_limit(snap["pos_x"], snap["pos_z"])
+            if osm_limit is not None:
+                self.vehicle.map_speed_mph = float(osm_limit)
+                map_mph = float(osm_limit)
+            else:
+                map_mph = snap["map_speed_mph"]   # fallback to last known / manual
 
         # 1. YOLO on real webcam frame
         detections = self.detector.detect(frame)
