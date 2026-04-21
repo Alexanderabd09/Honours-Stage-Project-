@@ -386,13 +386,14 @@ class WebotsDetectionSystem:
             map_mph   = snap["map_speed_mph"]
         else:
             speed_mps = snap["speed_mps"]
-            # ← NEW: query real OSM road data using Webots position
-            osm_limit = self.osm.get_speed_limit(snap["pos_x"], snap["pos_z"])
-            if osm_limit is not None:
-                self.vehicle.map_speed_mph = float(osm_limit)
-                map_mph = float(osm_limit)
-            else:
-                map_mph = snap["map_speed_mph"]   # fallback to last known / manual
+            # Zone-based map speed: updates automatically as pos_x changes
+            zone_limit = self.osm.get_map_speed_for_position(snap["pos_x"])
+            if zone_limit != self.vehicle.map_speed_mph:
+                print(f"[Map] Speed limit zone changed: "
+                      f"{self.vehicle.map_speed_mph:.0f} → {zone_limit} mph "
+                      f"(pos_x={snap['pos_x']:.1f})")
+                self.vehicle.map_speed_mph = float(zone_limit)
+            map_mph = float(zone_limit)
 
         # 1. YOLO on real webcam frame
         detections = self.detector.detect(frame)

@@ -20,37 +20,38 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
-# ZONE TABLE  —  map Webots world X/Z ranges to real UK road coordinates
+# ZONE TABLE  —  map Webots world X/Z ranges to speed limits
 # ---------------------------------------------------------------------------
-# Each entry: (x_min, x_max, lat, lng, label)
-# Pick roads whose real OSM maxspeed tag matches what you want to test.
+# Each entry: (x_min, x_max, map_speed_mph, lat, lng, label)
 #
-# Examples used below (all real UK roads — verified on OSM):
-#   30 mph zone  → residential street in Hull city centre
-#   50 mph zone  → A63 dual carriageway Hull
-#   60 mph zone  → A1033 single carriageway East Yorkshire
-#   70 mph zone  → M62 motorway near Hull
+# map_speed_mph is used directly in simulation (no Overpass call needed).
+# lat/lng are kept for real-hardware use or optional Overpass verification.
 #
-# Adjust these to whatever zones your Webots world represents.
+# Adjust x_min/x_max to match the actual pos_x range your Webots car travels.
+# The car's pos_x from Webots is used to select the zone automatically.
 # ---------------------------------------------------------------------------
 ZONE_TABLE = [
-    # (x_min, x_max,  lat,        lng,       label)
-    (-100,  -40,   53.74530,   -0.33460,  "30 mph – Hull residential"),
-    ( -40,    0,   53.74260,   -0.38120,  "50 mph – A63 Hull"),
-    (   0,   40,   53.80210,   -0.41350,  "60 mph – A1033 East Yorks"),
-    (  40,  100,   53.72980,   -0.53870,  "70 mph – M62 motorway"),
+    # (x_min, x_max, map_mph,  lat,        lng,       label)
+    (-100,  -40,   30,   53.74530,   -0.33460,  "30 mph – residential"),
+    ( -40,    0,   50,   53.74260,   -0.38120,  "50 mph – A-road"),
+    (   0,   40,   60,   53.80210,   -0.41350,  "60 mph – single carriageway"),
+    (  40,  100,   70,   53.72980,   -0.53870,  "70 mph – motorway"),
 ]
 
-# Fallback coordinate used when pos_x is outside all zones
-# (Hull city centre — typically 30 mph)
-DEFAULT_LAT = 53.74530
-DEFAULT_LNG = -0.33460
+# Speed used when pos_x falls outside all defined zones
+DEFAULT_MAP_SPEED_MPH = 30
 
 # Overpass query radius (metres) around the coordinate
 QUERY_RADIUS_M = 50
 
 # Cache: don't re-query the same (rounded) coordinate within this window
 CACHE_TTL_SECONDS = 60
+
+# Sentinel stored in cache when a request fails — prevents hammering on repeated failures
+_CACHE_MISS = "MISS"
+
+# How long to suppress retries after a failed request (seconds)
+FAILURE_CACHE_TTL = 30
 
 # HTTP timeout for Overpass requests
 REQUEST_TIMEOUT_SECONDS = 5.0
@@ -98,21 +99,41 @@ class OSMMapClient:
                  query_radius_m: int = QUERY_RADIUS_M,
                  cache_ttl_seconds: int = CACHE_TTL_SECONDS,
                  timeout: float = REQUEST_TIMEOUT_SECONDS):
-        self._radius  = query_radius_m
-        self._cache   = _TTLCache(cache_ttl_seconds)
-        self._timeout = timeout
+        self._radius        = query_radius_m
+        self._cache         = _TTLCache(cache_ttl_seconds)
+        self._failure_cache = _TTLCache(FAILURE_CACHE_TTL)
+        self._timeout       = timeout
 
     # ------------------------------------------------------------------
     # PUBLIC API
     # ------------------------------------------------------------------
+
+    def get_map_speed_for_position(self, pos_x: float) -> int:
+        """
+        Returns the map speed limit (mph) for a given Webots pos_x directly
+        from the zone table — no network call needed.
+
+        This is the recommended method for simulation use. As the car drives
+        and pos_x changes, the returned speed changes automatically.
+        """
+        for x_min, x_max, map_mph, _lat, _lng, label in ZONE_TABLE:
+            if x_min <= pos_x <= x_max:
+                return map_mph
+        return DEFAULT_MAP_SPEED_MPH
 
     def get_speed_limit(self,
                         pos_x: float,
                         pos_z: float) -> Optional[int]:
         """
         Given a Webots world position, return the road speed limit in mph.
-        Returns None if the lookup fails or no maxspeed tag is found.
+        First tries the zone table directly, then falls back to Overpass API.
         """
+        # Fast path: use zone table speed directly
+        for x_min, x_max, map_mph, _lat, _lng, _label in ZONE_TABLE:
+            if x_min <= pos_x <= x_max:
+                return map_mph
+
+        # Fallback: try Overpass API with the mapped coordinate
         lat, lng = self._webots_to_latlon(pos_x, pos_z)
         return self._query(lat, lng)
 
@@ -128,14 +149,10 @@ class OSMMapClient:
 
     @staticmethod
     def _webots_to_latlon(pos_x: float, pos_z: float):
-        """
-        Translate Webots world coordinates to a real UK lat/lon using
-        the zone table.  Falls back to DEFAULT_LAT/LNG if out of range.
-        """
-        for x_min, x_max, lat, lng, _label in ZONE_TABLE:
+        for x_min, x_max, _map_mph, lat, lng, _label in ZONE_TABLE:
             if x_min <= pos_x <= x_max:
                 return lat, lng
-        return DEFAULT_LAT, DEFAULT_LNG
+        return ZONE_TABLE[0][3], ZONE_TABLE[0][4]  # default to first zone coords
 
     # ------------------------------------------------------------------
     # OSM QUERY
@@ -145,16 +162,25 @@ class OSMMapClient:
         """
         Query Overpass for the maxspeed tag of the nearest highway way.
         Results are cached by rounded coordinate to avoid hammering the API.
+        Failures are also cached for FAILURE_CACHE_TTL seconds.
         """
-        # Round to ~11 m precision for cache key
         cache_key = f"{lat:.4f},{lng:.4f}"
+
+        # Check success cache first
         cached = self._cache.get(cache_key)
         if cached is not None:
             return cached
 
+        # Check failure cache — if we recently failed, don't retry yet
+        if self._failure_cache.get(cache_key) is not None:
+            return None
+
         result = self._fetch_from_overpass(lat, lng)
         if result is not None:
             self._cache.set(cache_key, result)
+        else:
+            # Cache the failure so we don't retry every single frame
+            self._failure_cache.set(cache_key, _CACHE_MISS)
         return result
 
     def _fetch_from_overpass(self, lat: float, lng: float) -> Optional[int]:
@@ -164,10 +190,15 @@ class OSMMapClient:
 way(around:{self._radius},{lat},{lng})["highway"]["maxspeed"];
 out tags 1;
 """
+        headers = {
+            "User-Agent": "SpeedSignDetection/1.0 (University of Hull BA-25-1057; contact: student-project)",
+            "Accept": "application/json",
+        }
         try:
             resp = requests.post(
                 OVERPASS_URL,
                 data={"data": query},
+                headers=headers,
                 timeout=self._timeout
             )
             resp.raise_for_status()
