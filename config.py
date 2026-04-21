@@ -39,4 +39,4 @@ class Config:
 
     #  Buzzer
     enable_buzzer: bool = False
-    buzzer_gpio_pin: int = 18  # example
+    buzzer_gpio_pin: int = 18 #wasnt used in the actual implementation 

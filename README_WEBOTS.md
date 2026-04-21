@@ -4,19 +4,7 @@
 
 ---
 
-## What Changed vs the Hybrid System
 
-| Component | Hybrid (original) | Webots (new) |
-|-----------|------------------|--------------|
-| Vehicle speed | Keyboard W/S | **Webots physics engine** |
-| Position | Simulated arithmetic | **Webots GPS sensor** |
-| Speed controller | Keyboard | **Webots motor cruise control** |
-| Temporary sign buzzer | Console only | **Audible buzzer + console** |
-| `detector.py` | ✅ Unchanged | ✅ Unchanged |
-| `decision.py` | ✅ Unchanged | ✅ Unchanged |
-| `config.py` | ✅ Unchanged | ✅ Unchanged |
-
----
 
 ## Architecture
 
@@ -75,7 +63,7 @@ cp path/to/best.pt weights/best.pt
 
 1. Download Webots from https://cyberbotics.com if not installed
 2. Open Webots → **File → Open World**
-3. Navigate to `worlds/speed_detection_world.wbt`
+3. Navigate to `worlds/city.wbt`
 4. Webots will automatically find the `controllers/speed_car_controller/` folder
 
 ### Step 4 — Run Webots

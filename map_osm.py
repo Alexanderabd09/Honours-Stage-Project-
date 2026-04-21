@@ -1,16 +1,9 @@
 """
-map_osm.py  —  OpenStreetMap speed limit lookup for Webots simulation
-=====================================================================
-Since the simulation has no real GPS coordinates, we map Webots world
+Since the simulation has no real GPS coordinates, I mapped Webots world
 positions (pos_x, pos_z) to real UK road coordinates using a simple
 zone table.  The Overpass API is then queried with those real coords,
 so genuine OSM maxspeed tags are returned.
 
-Usage:
-    from map_osm import OSMMapClient
-    client = OSMMapClient()
-    speed = client.get_speed_limit(pos_x=10.5, pos_z=-3.2)
-    # returns int (mph) or None if unknown
 """
 
 import time
@@ -19,17 +12,6 @@ import requests
 from typing import Optional
 
 
-# ---------------------------------------------------------------------------
-# ZONE TABLE  —  map Webots world X/Z ranges to speed limits
-# ---------------------------------------------------------------------------
-# Each entry: (x_min, x_max, map_speed_mph, lat, lng, label)
-#
-# map_speed_mph is used directly in simulation (no Overpass call needed).
-# lat/lng are kept for real-hardware use or optional Overpass verification.
-#
-# Adjust x_min/x_max to match the actual pos_x range your Webots car travels.
-# The car's pos_x from Webots is used to select the zone automatically.
-# ---------------------------------------------------------------------------
 ZONE_TABLE = [
     # (x_min, x_max, map_mph,  lat,        lng,       label)
     (-100,  -40,   30,   53.74530,   -0.33460,  "30 mph – residential"),
@@ -59,9 +41,9 @@ REQUEST_TIMEOUT_SECONDS = 5.0
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 
-# ---------------------------------------------------------------------------
+
 # TTL CACHE
-# ---------------------------------------------------------------------------
+
 class _TTLCache:
     def __init__(self, ttl: int):
         self._ttl = ttl
@@ -84,9 +66,9 @@ class _TTLCache:
             self._store[key] = (value, time.time())
 
 
-# ---------------------------------------------------------------------------
+
 # MAIN CLIENT
-# ---------------------------------------------------------------------------
+
 class OSMMapClient:
     """
     Looks up the OSM maxspeed tag for a road near a given coordinate.
@@ -104,18 +86,12 @@ class OSMMapClient:
         self._failure_cache = _TTLCache(FAILURE_CACHE_TTL)
         self._timeout       = timeout
 
-    # ------------------------------------------------------------------
+
     # PUBLIC API
-    # ------------------------------------------------------------------
+ 
 
     def get_map_speed_for_position(self, pos_x: float) -> int:
-        """
-        Returns the map speed limit (mph) for a given Webots pos_x directly
-        from the zone table — no network call needed.
-
-        This is the recommended method for simulation use. As the car drives
-        and pos_x changes, the returned speed changes automatically.
-        """
+       
         for x_min, x_max, map_mph, _lat, _lng, label in ZONE_TABLE:
             if x_min <= pos_x <= x_max:
                 return map_mph
@@ -124,10 +100,7 @@ class OSMMapClient:
     def get_speed_limit(self,
                         pos_x: float,
                         pos_z: float) -> Optional[int]:
-        """
-        Given a Webots world position, return the road speed limit in mph.
-        First tries the zone table directly, then falls back to Overpass API.
-        """
+      
         # Fast path: use zone table speed directly
         for x_min, x_max, map_mph, _lat, _lng, _label in ZONE_TABLE:
             if x_min <= pos_x <= x_max:
@@ -140,12 +113,12 @@ class OSMMapClient:
     def get_speed_limit_from_latlon(self,
                                     lat: float,
                                     lng: float) -> Optional[int]:
-        """Direct lat/lon lookup — use this if you have real coordinates."""
+        """use this if there are real coordinates."""
         return self._query(lat, lng)
 
-    # ------------------------------------------------------------------
+
     # COORDINATE TRANSLATION
-    # ------------------------------------------------------------------
+   
 
     @staticmethod
     def _webots_to_latlon(pos_x: float, pos_z: float):
@@ -154,16 +127,12 @@ class OSMMapClient:
                 return lat, lng
         return ZONE_TABLE[0][3], ZONE_TABLE[0][4]  # default to first zone coords
 
-    # ------------------------------------------------------------------
+    
     # OSM QUERY
-    # ------------------------------------------------------------------
+   
 
     def _query(self, lat: float, lng: float) -> Optional[int]:
-        """
-        Query Overpass for the maxspeed tag of the nearest highway way.
-        Results are cached by rounded coordinate to avoid hammering the API.
-        Failures are also cached for FAILURE_CACHE_TTL seconds.
-        """
+    
         cache_key = f"{lat:.4f},{lng:.4f}"
 
         # Check success cache first
@@ -184,7 +153,7 @@ class OSMMapClient:
         return result
 
     def _fetch_from_overpass(self, lat: float, lng: float) -> Optional[int]:
-        """Send the actual HTTP request to the Overpass API."""
+        
         query = f"""
 [out:json][timeout:10];
 way(around:{self._radius},{lat},{lng})["highway"]["maxspeed"];
@@ -220,23 +189,13 @@ out tags 1;
             print(f"[OSM] Unexpected error: {e}")
             return None
 
-    # ------------------------------------------------------------------
+   
     # MAXSPEED PARSING
-    # ------------------------------------------------------------------
+  
 
     @staticmethod
     def _parse_maxspeed(raw: str) -> Optional[int]:
-        """
-        Convert an OSM maxspeed tag string to an integer mph value.
-
-        Handles:
-          "30"          → 30  (assumed mph in UK context)
-          "30 mph"      → 30
-          "48 kph"      → 29  (converted)
-          "national"    → 70  (UK national speed limit = 70 mph on motorways)
-          "signals"     → None (variable, ignore)
-          ""            → None
-        """
+      
         raw = raw.strip().lower()
         if not raw:
             return None
@@ -268,9 +227,9 @@ out tags 1;
         return None
 
 
-# ---------------------------------------------------------------------------
-# QUICK TEST  (run this file directly to verify connectivity)
-# ---------------------------------------------------------------------------
+
+# QUICK TEST  (to verify connectivity)
+
 if __name__ == "__main__":
     print("Testing OSM map client...\n")
     client = OSMMapClient()

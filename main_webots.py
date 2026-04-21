@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from detector import YoloSpeedDetector
 from decision import DecisionEngine
 from config import Config
-from map_osm import OSMMapClient          # ← NEW: real OSM map lookups
+from map_osm import OSMMapClient          
 
 
 
@@ -116,9 +116,8 @@ class WebotsBridge:
 
 class Buzzer:
     """
-    Software buzzer.
-    - Tries to play a system beep / sound file.
-    - Designed to signal TEMPORARY sign detection 
+    Tries to play a system beep / sound file.
+    to signal TEMPORARY sign detection 
     """
 
     def __init__(self, cooldown_seconds: float = 5.0):
@@ -164,7 +163,7 @@ class Buzzer:
 
 
 
-# ALERT MANAGER (carries over from main_hybrid.py)
+# ALERT MANAGER 
 
 
 class AlertManager:
@@ -272,16 +271,14 @@ class WebotsDetectionSystem:
                  webots_host: str = "127.0.0.1",
                  webots_port: int = 65432):
 
-        print("\n" + "=" * 60)
+       
         print("SPEED SIGN DETECTION — WEBOTS INTEGRATION")
-        print("Real Webcam  +  Webots Vehicle Physics")
-        print("=" * 60)
 
         self.config     = Config()
         self.show_video = show_video
 
-        # [1] Camera
-        print(f"\n[1/6] Opening camera {camera_index}...")
+        #  Camera
+        print(f"\n Opening camera {camera_index}...")
         self.camera = cv2.VideoCapture(camera_index)
         if not self.camera.isOpened():
             raise RuntimeError(f"Cannot open camera {camera_index}")
@@ -291,8 +288,8 @@ class WebotsDetectionSystem:
         h = int(self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
         print(f"   Camera ready: {w}x{h}")
 
-        # [2] YOLO detector 
-        print(f"\n[2/6] Loading YOLO: {self.config.yolo_model_path}")
+        #  YOLO detector 
+        print(f"\n Loading YOLO: {self.config.yolo_model_path}")
         self.detector = YoloSpeedDetector(
             model_path    = self.config.yolo_model_path,
             conf_th       = self.config.conf_threshold,
@@ -300,10 +297,9 @@ class WebotsDetectionSystem:
             min_box_area  = self.config.min_box_area,
             logger        = self._logger()
         )
-        print("   YOLO ready")
 
-        # [3] Decision engine 
-        print("\n[3/6] Decision engine...")
+        #  Decision engine 
+        print("\nDecision engine...")
         self.decision = DecisionEngine(
             confirm_frames         = self.config.confirm_frames,
             temporary_gap_mph      = self.config.temporary_gap_mph,
@@ -312,33 +308,32 @@ class WebotsDetectionSystem:
             gps_min_moving_mps     = self.config.gps_min_moving_mps,
             logger                 = self._logger()
         )
-        print("   Decision engine ready")
 
-        # [4] Webots bridge
-        print(f"\n[4/7] Webots bridge → {webots_host}:{webots_port}")
+        #  Webots bridge
+        print(f"\n Webots bridge → {webots_host}:{webots_port}")
         self.vehicle = WebotsVehicleState(fallback_speed_mph)
         self.bridge  = WebotsBridge(self.vehicle, webots_host, webots_port)
         print("   Bridge thread started (will connect when Webots runs)")
 
-        # [5] OSM map client  ← NEW
-        print("\n[5/7] OSM map client...")
+        #  OSM map client  ← NEW
+        print("\n OSM map client...")
         self.osm = OSMMapClient(
             query_radius_m    = self.config.map_query_radius_m,
             cache_ttl_seconds = self.config.map_cache_seconds,
         )
         print("   OSM client ready (queries real UK road data via Overpass API)")
 
-        # [6] Buzzer
-        print("\n[6/7] Buzzer...")
+        #  Buzzer
+        print("\n Buzzer...")
         self.buzzer  = Buzzer(cooldown_seconds=self.config.alert_cooldown_seconds)
         self.alerter = AlertManager(self.buzzer,
                                     self.config.alert_cooldown_seconds)
-        print("   Buzzer ready")
+        
 
-        # [7] Logger
-        print("\n[7/7] Data logger...")
+        #  Logger
+        print("\n Data logger...")
         self.data_logger = DataLogger()
-        print("   Logger ready")
+     
 
         # State
         self.running       = True
@@ -349,12 +344,12 @@ class WebotsDetectionSystem:
         self.manual_override        = False
         self.manual_override_speed  = fallback_speed_mph
 
-        print("\n" + "=" * 60)
+      
         print("SYSTEM READY")
         print("Waiting for Webots to start… (running with fallback speed"
               f" {fallback_speed_mph} mph until connected)")
         print("Map speed: live OSM data via Overpass API (M key = manual fallback)")
-        print("=" * 60)
+     
         self._print_controls()
 
     
@@ -369,7 +364,7 @@ class WebotsDetectionSystem:
     def _print_controls(self):
         print("\nControls (click the OpenCV window first):")
         print("  M       → cycle map speed limit (manual override, OSM takes priority)")
-        print("  T       → toggle manual speed override (for testing)")
+        print("  T       → toggle manual speed override (just for testing)")
         print("  W / S   → +5 / -5 mph override speed")
         print("  1–9     → set override to 10–90 mph")
         print("  Q       → quit\n")
@@ -395,13 +390,13 @@ class WebotsDetectionSystem:
                 self.vehicle.map_speed_mph = float(zone_limit)
             map_mph = float(zone_limit)
 
-        # 1. YOLO on real webcam frame
+        # YOLO on real webcam frame
         detections = self.detector.detect(frame)
         top        = detections[0] if detections else None
         top_speed  = top["speed"] if top else None
         top_conf   = top["conf"]  if top else 0.0
 
-        # 2. Decision engine 
+        #  Decision engine 
         event = self.decision.update(top_speed, speed_mps, map_mph)
 
         confirmed    = None
@@ -431,11 +426,11 @@ class WebotsDetectionSystem:
                     "OVERSPEED"
                 )
 
-        # 3. Log
+        #  Log
         self.data_logger.log(snap, top_speed, confirmed,
                              top_conf, is_overspeed, is_temporary)
 
-        # 4. Draw overlay
+        #  Draw overlay
         if self.show_video:
             frame = self._draw_overlay(frame, top, snap, confirmed,
                                        is_overspeed, is_temporary)
@@ -599,9 +594,8 @@ class WebotsDetectionSystem:
         self.camera.release()
         cv2.destroyAllWindows()
 
-        print("\n" + "=" * 60)
+        
         print("SESSION SUMMARY")
-        print("=" * 60)
         print(f"Frames processed : {self.frame_count}")
         print(f"Alerts triggered : {len(self.alerter.alerts_log)}")
         for a in self.alerter.alerts_log:
