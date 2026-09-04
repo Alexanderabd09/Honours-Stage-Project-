@@ -1,0 +1,11 @@
+# Speed Limit Sign Detection and Driver Alert System
+# Python 3.10+
+
+ultralytics>=8.0.0,<9.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Webots' own Python API (the `vehicle` and `controller` modules used by
+# controllers/speed_car_controller/) ships with the Webots installation and
+# is not installed via pip. See https://cyberbotics.com

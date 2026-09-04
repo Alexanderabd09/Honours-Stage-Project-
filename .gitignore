@@ -5,14 +5,23 @@
 __pycache__/
 *.pyc
 .idea/
+.venv/
 
-# YOLO training outputs & weights
+# YOLO training outputs
 runs/
 src/runs/
-src/weights/
-src/yolov8n.pt
-*.pt
 
-# Dataset
+# Model weights, except the trained detector shipped with this project
+*.pt
+!weights/best.pt
+
+# Dataset (see README for the Roboflow source)
 dataset/
 hardware/
+
+# Generated run logs
+detection_log*.csv
+
+# Webots editor state
+worlds/.*.wbproj
+worlds/.*.jpg
